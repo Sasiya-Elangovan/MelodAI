@@ -10,18 +10,34 @@ class PromptEnhancer:
         with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
             self.mood_templates = json.load(f)
 
+        # Predefined structure variations
+        self.structures = [
+            "intro-verse-chorus structure",
+            "gradual build-up with climax",
+            "loop-friendly structure",
+            "smooth progression without sharp transitions"
+        ]
+
     def enhance(self, params, variations=1):
         """
-        Generate enhanced music prompts from extracted parameters
+        Generate multiple enhanced music prompts with guaranteed uniqueness
         """
         prompts = []
-        for _ in range(variations):
-            prompt = self._build_prompt(params)
+
+        # Ensure we don't request more variations than available structures
+        structure_pool = random.sample(
+            self.structures,
+            k=min(variations, len(self.structures))
+        )
+
+        for structure in structure_pool:
+            prompt = self._build_prompt(params, structure)
             if self._validate(prompt):
                 prompts.append(prompt)
+
         return prompts
 
-    def _build_prompt(self, params):
+    def _build_prompt(self, params, structure_hint):
         mood = params.get("mood", "calm")
         tempo = params.get("tempo", "medium")
         style = params.get("style", "ambient")
@@ -32,16 +48,9 @@ class PromptEnhancer:
             mood, self.mood_templates["calm"]
         )
 
-        description = base_template.format(
-            tempo=120 if tempo == "fast" else 90 if tempo == "medium" else 60
-        )
+        bpm = 120 if tempo == "fast" else 90 if tempo == "medium" else 60
 
-        structure_hint = random.choice([
-            "intro-verse-chorus structure",
-            "gradual build-up with climax",
-            "loop-friendly structure",
-            "smooth progression without sharp transitions"
-        ])
+        description = base_template.format(tempo=bpm)
 
         enhanced_prompt = (
             f"{description}. "
@@ -57,4 +66,4 @@ class PromptEnhancer:
         """
         Validate prompt length and coherence
         """
-        return 20 < len(prompt) < 500
+        return 30 < len(prompt) < 500

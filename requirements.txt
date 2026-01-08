@@ -1,0 +1,14 @@
+streamlit
+transformers
+torch
+torchaudio
+music21
+mido
+pretty_midi
+pydub
+scipy
+openai
+anthropic-sdk
+audiocraft
+accelerate
+streamlit

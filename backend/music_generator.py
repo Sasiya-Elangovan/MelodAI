@@ -1,4 +1,15 @@
-import torch
+# backend/music_generator.py
+
+# ---------------- Safe torch import ----------------
+try:
+    import torch
+except ModuleNotFoundError:
+    torch = None
+
+if torch is None:
+    raise RuntimeError("PyTorch is not installed...")
+
+
 import time
 import json
 import numpy as np
@@ -6,12 +17,22 @@ import soundfile as sf
 from pathlib import Path
 from transformers import MusicgenForConditionalGeneration, AutoProcessor
 
+# ---------------- Paths ----------------
 CONFIG_PATH = Path("config/generation_params.json")
 OUTPUT_DIR = Path("outputs/samples")
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+
 class MusicGenerator:
     def __init__(self, model_name="facebook/musicgen-small"):
+        # ✅ HARD GUARD — FAIL ONLY WHEN CLASS IS USED
+        if torch is None:
+            raise RuntimeError(
+                "PyTorch is not installed.\n"
+                "Please install torch to use MusicGenerator:\n"
+                "pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu"
+            )
+
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         print("Loading MusicGen model...")
@@ -20,7 +41,7 @@ class MusicGenerator:
         self.model.to(self.device)
         self.model.eval()
 
-        with open(CONFIG_PATH) as f:
+        with open(CONFIG_PATH, "r") as f:
             self.config = json.load(f)
 
         print("MusicGenerator ready")
@@ -46,17 +67,17 @@ class MusicGenerator:
                 guidance_scale=cfg_coef
             )
 
-        # 🔥 ABSOLUTE FIX: extract mono channel
+        # ✅ Extract mono channel safely
         audio_np = audio[0, 0].cpu().numpy().astype(np.float32)
 
-        # Normalize safely
+        # ✅ Normalize
         peak = np.max(np.abs(audio_np))
         if peak > 0:
             audio_np /= peak
 
         file_path = OUTPUT_DIR / f"{mood}_{energy_level}_{int(time.time())}.wav"
 
-        # ✅ SAFE WAV WRITE
+        # ✅ Safe WAV write
         sf.write(
             file=str(file_path),
             data=audio_np,
