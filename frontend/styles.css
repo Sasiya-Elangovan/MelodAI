@@ -1,54 +1,56 @@
-/* ---------- Global ---------- */
+/* Global */
 body {
-    background-color: #0b0f14;
-    color: #f1f1f1;
+    background-color: #0f172a;
+    color: #e5e7eb;
 }
 
-/* ---------- Headings ---------- */
-h2, h3 {
+/* Cards */
+.card {
+    background: #020617;
+    border-radius: 14px;
+    padding: 18px;
+    border: 1px solid #1e293b;
+}
+
+/* Headings */
+.title {
+    font-size: 38px;
+    font-weight: 800;
+    color: #38bdf8;
+}
+
+.subtitle {
+    font-size: 16px;
+    color: #94a3b8;
+}
+
+/* Buttons */
+.stButton > button {
+    background: linear-gradient(90deg, #38bdf8, #22c55e);
+    color: black;
+    border-radius: 10px;
+    height: 45px;
     font-weight: 600;
-    letter-spacing: 0.3px;
 }
 
-/* ---------- Text Area ---------- */
-textarea {
-    background-color: #1a1f26 !important;
-    color: #f1f1f1 !important;
-    border-radius: 12px !important;
-    border: 1px solid #2a2f38 !important;
+.stButton > button:hover {
+    background: linear-gradient(90deg, #22c55e, #38bdf8);
 }
 
-/* ---------- Radio Buttons (Select Mood) ---------- */
-.stRadio > div {
-    gap: 6px;
+/* Mood buttons */
+.mood {
+    background: #020617;
+    padding: 14px;
+    border-radius: 10px;
+    border: 1px solid #334155;
+    text-align: center;
+    cursor: pointer;
 }
 
-.stRadio label {
-    font-size: 1rem;
-    padding: 4px 0;
-    color: #f1f1f1;
-}
-
-/* ---------- Sidebar ---------- */
-section[data-testid="stSidebar"] {
-    background-color: #121720;
-    border-right: 1px solid #1f2430;
-}
-
-/* ---------- Buttons ---------- */
-button {
-    border-radius: 12px !important;
-    font-weight: 500;
-}
-
-/* ---------- Multiselect ---------- */
-div[data-baseweb="select"] {
-    background-color: #1a1f26 !important;
-    border-radius: 12px !important;
-    border: 1px solid #2a2f38 !important;
-}
-
-/* ---------- Divider ---------- */
-hr {
-    border-color: #1f2430;
+/* Context tags */
+.tag {
+    background: #1e293b;
+    padding: 10px;
+    border-radius: 10px;
+    text-align: center;
 }

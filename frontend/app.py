@@ -1,161 +1,115 @@
-# ==================================================
-# MelodAI – Streamlit Frontend (Tasks 2.1 → 2.6)
-# ==================================================
-
 import os
 import sys
-import uuid
-import json
-import io
-import zipfile
-from datetime import datetime
-from collections import Counter
-
+import time
+import random
 import streamlit as st
-import numpy as np
-import soundfile as sf
-import matplotlib.pyplot as plt
 
-# --------------------------------------------------
-# PATH FIX (IMPORTANT)
-# --------------------------------------------------
+# ==================================================
+# STEP 2: SAFE BACKEND IMPORT
+# ==================================================
+
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-# --------------------------------------------------
-# BACKEND IMPORTS (SAFE)
-# --------------------------------------------------
 try:
-    from backend.main_service import (
-        generate_music_pipeline,
-        generate_music_variations,
-        extend_generated_music
-    )
+    from backend.main_service import generate_music_pipeline
     BACKEND_AVAILABLE = True
 except Exception as e:
     BACKEND_AVAILABLE = False
     BACKEND_ERROR = str(e)
 
-# --------------------------------------------------
+# ==================================================
 # PAGE CONFIG
-# --------------------------------------------------
+# ==================================================
 st.set_page_config(
     page_title="MelodAI - AI Music Generator",
     page_icon="🎵",
     layout="wide"
 )
 
-# --------------------------------------------------
-# SESSION STATE DEFAULTS
-# --------------------------------------------------
-for key, default in {
-    "history": [],
-    "current_audio": None,
-    "error": None,
-    "example_text": "",
-    "show_favorites_only": False,
-    "generation_times": [],
-    "variations": []
-}.items():
-    if key not in st.session_state:
-        st.session_state[key] = default
+# ==================================================
+# STEP 3: SESSION STATE FOR GENERATION
+# ==================================================
+if "user_input" not in st.session_state:
+    st.session_state.user_input = ""
 
-# --------------------------------------------------
+if "current_audio" not in st.session_state:
+    st.session_state.current_audio = None
+
+if "generation_params" not in st.session_state:
+    st.session_state.generation_params = None
+
+if "generation_prompt" not in st.session_state:
+    st.session_state.generation_prompt = None
+
+if "generation_error" not in st.session_state:
+    st.session_state.generation_error = None
+
+# ==================================================
 # HEADER
-# --------------------------------------------------
+# ==================================================
 st.title("🎵 MelodAI")
 st.caption("AI-powered music generation from text prompts")
 
-if not BACKEND_AVAILABLE:
-    st.warning("⚠ Backend not available locally. UI demo mode enabled.")
-
 st.divider()
 
-# --------------------------------------------------
+# ==================================================
 # SIDEBAR – GENERATION SETTINGS
-# --------------------------------------------------
+# ==================================================
 st.sidebar.header("🎛️ Generation Settings")
 
-duration = st.sidebar.slider("Duration (seconds)", 10, 120, 30, step=5)
-temperature = st.sidebar.slider("Creativity (Temperature)", 0.5, 1.5, 1.0, step=0.1)
-model = st.sidebar.selectbox("Model", ["musicgen-small"])
+duration = st.sidebar.slider("Duration (seconds)", 10, 120, 30)
+temperature = st.sidebar.slider("Creativity (Temperature)", 0.5, 1.5, 1.0)
+model = st.sidebar.selectbox(
+    "Model",
+    ["musicgen-small", "musicgen-medium", "musicgen-large"]
+)
 
-# --------------------------------------------------
-# SIDEBAR – ADVANCED PARAMETERS (TASK 2.6)
-# --------------------------------------------------
 st.sidebar.divider()
-expert_mode = st.sidebar.toggle("🧪 Expert Mode")
+st.sidebar.subheader("⚙ Advanced Parameters")
 
-if expert_mode:
-    top_k = st.sidebar.slider("Top-K", 10, 250, 50)
-    top_p = st.sidebar.slider("Top-P", 0.1, 1.0, 0.9)
-    cfg = st.sidebar.slider("CFG Coefficient", 1.0, 10.0, 3.0)
-else:
-    top_k = top_p = cfg = None
+top_k = st.sidebar.slider("Top-K", 10, 250, 50)
+top_p = st.sidebar.slider("Top-P", 0.10, 1.00, 0.90)
+cfg = st.sidebar.slider("CFG Coefficient", 1.00, 10.00, 3.00)
 
-# --------------------------------------------------
-# SIDEBAR – HISTORY (TASK 2.5)
-# --------------------------------------------------
 st.sidebar.divider()
 st.sidebar.subheader("🕘 Generation History")
+st.sidebar.info("History will be added in later tasks")
 
-if not st.session_state.history:
-    st.sidebar.info("No history yet.")
-else:
-    st.session_state.show_favorites_only = st.sidebar.checkbox(
-        "⭐ Show favorites only",
-        value=st.session_state.show_favorites_only
-    )
+# ==================================================
+# MAIN INPUT INTERFACE
+# ==================================================
+st.subheader("✨ Describe Your Music")
 
-    for item in st.session_state.history:
-        if st.session_state.show_favorites_only and not item["favorite"]:
-            continue
+user_input = st.text_area(
+    "Describe the music you want",
+    value=st.session_state.user_input,
+    placeholder="E.g., energetic workout music with electronic beats",
+    height=120
+)
 
-        with st.sidebar.expander(item["prompt"][:30] + "..."):
-            st.caption(item["timestamp"].strftime("%Y-%m-%d %H:%M:%S"))
-            st.caption(f"Mood: {item['mood']}")
+st.session_state.user_input = user_input
 
-            if os.path.exists(item["audio_file"]):
-                st.audio(item["audio_file"])
+char_count = len(user_input)
+st.caption(f"{char_count} / 300 characters")
 
-            c1, c2, c3 = st.columns(3)
-
-            if c1.button("⭐" if not item["favorite"] else "💔", key=f"fav_{item['id']}"):
-                item["favorite"] = not item["favorite"]
-                st.rerun()
-
-            if c2.button("▶ Replay", key=f"rep_{item['id']}"):
-                st.session_state.current_audio = item
-                st.rerun()
-
-            if c3.button("🗑", key=f"del_{item['id']}"):
-                st.session_state.history.remove(item)
-                st.rerun()
-
-    if st.sidebar.button("🧹 Clear All History"):
-        st.session_state.history.clear()
-        st.rerun()
+if char_count == 0:
+    st.warning("⚠ Please enter a description.")
+elif char_count < 10:
+    st.warning("⚠ Description is too short.")
+elif char_count > 300:
+    st.error("❌ Description is too long.")
 
 # --------------------------------------------------
-# MAIN LAYOUT
+# QUICK MOOD SELECTOR
 # --------------------------------------------------
-left_col, right_col = st.columns([2, 1])
+st.subheader("🎭 Quick Mood")
 
-with left_col:
-    st.subheader("✨ Describe Your Music")
-    user_input = st.text_area(
-        "Describe the music you want",
-        value=st.session_state.example_text,
-        height=120
-    )
-
-with right_col:
-    st.subheader("🎭 Select Mood")
-    mood = st.selectbox(
-        "Mood",
-        ["Happy", "Sad", "Energetic", "Calm", "Romantic", "Dramatic"]
-    )
+mood = st.selectbox(
+    "Select mood",
+    ["Happy", "Sad", "Energetic", "Calm", "Romantic", "Dramatic"]
+)
 
 # --------------------------------------------------
 # EXAMPLE PROMPTS
@@ -163,166 +117,120 @@ with right_col:
 st.subheader("💡 Example Prompts")
 
 EXAMPLES = {
-    "Happy": ["Happy road trip pop music"],
-    "Energetic": ["Energetic EDM gym music"],
-    "Calm": ["Relaxing ambient meditation music"],
-    "Romantic": ["Romantic piano dinner music"],
-    "Sad": ["Emotional violin background score"]
+    "Happy": [
+        "Happy pop music for a road trip",
+        "Bright cheerful background music",
+        "Joyful acoustic guitar track",
+        "Upbeat summer vibes music"
+    ],
+    "Energetic": [
+        "High-energy EDM workout music",
+        "Fast-paced gym motivation track",
+        "Powerful electronic beats",
+        "Intense running music"
+    ],
+    "Calm": [
+        "Relaxing ambient meditation music",
+        "Soft piano music for studying",
+        "Peaceful lo-fi background music",
+        "Nature-inspired calm music"
+    ],
+    "Romantic": [
+        "Romantic piano dinner music",
+        "Soft acoustic love song",
+        "Warm romantic instrumental",
+        "Gentle candlelight dinner music"
+    ],
+    "Sad": [
+        "Emotional piano music",
+        "Slow sad violin melody",
+        "Melancholic breakup music",
+        "Deep emotional instrumental"
+    ]
 }
 
-if st.button("🎲 Try an Example"):
-    st.session_state.example_text = np.random.choice(EXAMPLES[mood])
-    st.rerun()
+examples = random.sample(EXAMPLES[mood], 2)
+cols = st.columns(2)
+for i, ex in enumerate(examples):
+    if cols[i].button(ex):
+        st.session_state.user_input = ex
+        st.rerun()
 
-# --------------------------------------------------
-# GENERATE MUSIC
-# --------------------------------------------------
+# ==================================================
+# STEP 4: GENERATION WORKFLOW
+# ==================================================
 st.divider()
 
-params = {
-    "duration": duration,
-    "temperature": temperature,
-    "mood": mood,
-    "top_k": top_k,
-    "top_p": top_p,
-    "cfg": cfg
-}
-
-if st.button("🎵 Generate Music", type="primary"):
-    if len(user_input) < 10:
-        st.error("Please enter a detailed description.")
-    elif not BACKEND_AVAILABLE:
-        st.error("Backend not available locally.")
+if st.button("🎶 Generate Music", type="primary"):
+    if not BACKEND_AVAILABLE:
+        st.error("Backend is not available. Please check setup.")
+    elif not user_input or len(user_input) < 10:
+        st.warning("Please enter a more detailed description.")
     else:
         try:
-            start = datetime.now()
-            with st.spinner("🎶 Creating your music..."):
+            progress = st.progress(0)
+            status = st.empty()
+
+            status.info("🧠 Processing input...")
+            progress.progress(25)
+            time.sleep(0.5)
+
+            status.info("🎼 Generating music...")
+            progress.progress(60)
+
+            with st.spinner("Creating your music..."):
                 result = generate_music_pipeline(user_input)
-            gen_time = (datetime.now() - start).total_seconds()
 
-            item = {
-                "id": str(uuid.uuid4()),
-                "timestamp": datetime.now(),
-                "prompt": user_input,
-                "enhanced_prompt": result["prompt"],
-                "audio_file": result["audio"]["file"],
-                "params": params,
-                "mood": mood,
-                "favorite": False,
-                "gen_time": gen_time
-            }
+            progress.progress(100)
+            status.success("✅ Music generated successfully!")
 
-            st.session_state.history.insert(0, item)
-            st.session_state.history = st.session_state.history[:10]
-            st.session_state.generation_times.append(gen_time)
-            st.session_state.current_audio = item
-
-            st.success("✅ Music generated successfully!")
+            st.session_state.current_audio = result["audio"]["file"]
+            st.session_state.generation_params = result["params"]
+            st.session_state.generation_prompt = result["prompt"]
+            st.session_state.generation_error = None
 
         except Exception as e:
-            st.session_state.error = str(e)
-            st.error(str(e))
+            st.session_state.generation_error = str(e)
+            st.error("❌ Music generation failed.")
 
-# --------------------------------------------------
-# OUTPUT
-# --------------------------------------------------
-st.divider()
+# ==================================================
+# STEP 5: OUTPUT DISPLAY
+# ==================================================
 st.subheader("🎧 Generated Output")
 
-item = st.session_state.current_audio
+audio_path = st.session_state.current_audio
 
-if item and os.path.exists(item["audio_file"]):
-    st.audio(item["audio_file"])
+if audio_path and os.path.exists(audio_path):
+    st.audio(audio_path)
+
+    with st.expander("📄 Generation Details"):
+        st.markdown("**Enhanced Prompt**")
+        st.code(st.session_state.generation_prompt)
+
+        st.markdown("**Generation Parameters**")
+        st.json(st.session_state.generation_params)
 else:
-    st.info("No audio generated yet.")
+    st.info("No music generated yet.")
 
-# --------------------------------------------------
-# VARIATIONS (TASK 2.6)
-# --------------------------------------------------
-st.divider()
-st.subheader("🎛 Music Variations")
+# ==================================================
+# STEP 6: ERROR HANDLING + RETRY
+# ==================================================
+if st.session_state.generation_error:
+    st.error(st.session_state.generation_error)
 
-if item and st.button("🎶 Generate 3 Variations"):
-    try:
-        with st.spinner("Creating variations..."):
-            st.session_state.variations = generate_music_variations(
-                prompt=item["enhanced_prompt"],
-                params=item["params"],
-                num_variations=3
-            )
-    except Exception as e:
-        st.error(str(e))
+    col1, col2 = st.columns(2)
+    if col1.button("🔁 Retry"):
+        st.session_state.generation_error = None
+        st.rerun()
 
-if st.session_state.variations:
-    cols = st.columns(len(st.session_state.variations))
-    for col, var in zip(cols, st.session_state.variations):
-        with col:
-            st.audio(var["audio"]["file"])
-            st.caption(f"Energy: {var['params'].get('energy')}")
-            st.button("👍 Vote", key=var["id"])
+    if col2.button("💡 Try Example Prompt"):
+        st.session_state.user_input = "Calm piano music for studying"
+        st.session_state.generation_error = None
+        st.rerun()
 
-# --------------------------------------------------
-# EXTEND MUSIC (TASK 2.6)
-# --------------------------------------------------
-st.divider()
-st.subheader("⏱ Extend Music")
-
-if item:
-    extend_by = st.selectbox("Extend by (seconds)", [15, 30, 45])
-    if st.button("➕ Extend Music"):
-        try:
-            extend_generated_music(
-                prompt=item["enhanced_prompt"],
-                audio_file=item["audio_file"],
-                extend_by=extend_by
-            )
-        except Exception as e:
-            st.error(str(e))
-
-# --------------------------------------------------
-# BATCH GENERATION (TASK 2.6)
-# --------------------------------------------------
-st.divider()
-st.subheader("📦 Batch Generation")
-
-batch_input = st.text_area(
-    "Enter one prompt per line",
-    placeholder="Happy pop\nCalm piano\nEnergetic EDM"
-)
-
-if st.button("⚡ Generate Batch"):
-    prompts = [p.strip() for p in batch_input.splitlines() if p.strip()]
-    for p in prompts:
-        try:
-            result = generate_music_pipeline(p)
-            st.session_state.history.insert(0, {
-                "id": str(uuid.uuid4()),
-                "timestamp": datetime.now(),
-                "prompt": p,
-                "enhanced_prompt": result["prompt"],
-                "audio_file": result["audio"]["file"],
-                "params": result["params"],
-                "mood": result["params"].get("mood", "unknown"),
-                "favorite": False,
-                "gen_time": 0.0
-            })
-        except Exception:
-            st.warning(f"Failed: {p}")
-
-# --------------------------------------------------
-# STATS
-# --------------------------------------------------
-st.divider()
-st.subheader("📊 History Statistics")
-
-st.metric("Total Generations", len(st.session_state.history))
-
-if st.session_state.history:
-    mood_counts = Counter(h["mood"] for h in st.session_state.history)
-    st.metric("Most Used Mood", mood_counts.most_common(1)[0][0])
-
-# --------------------------------------------------
-# ERROR DISPLAY
-# --------------------------------------------------
-if st.session_state.error:
-    st.error(st.session_state.error)
+# ==================================================
+# STEP 7: CANCEL GENERATION (UX SAFE)
+# ==================================================
+if st.button("🛑 Cancel Generation"):
+    st.warning("Generation cancelled by user.")
+    st.stop()
